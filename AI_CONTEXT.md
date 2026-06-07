@@ -723,9 +723,17 @@ and build a working deployed app.
 - `npm run build` succeeds (89 modules, ~96 KB gzipped).
 
 ### Remaining
-- Documentation: README.md (done), finalize key prompts file.
-- Git repository + push to GitHub.
-- Deployment to AWS (EC2 + RDS + S3/CloudFront) — needs user's AWS account.
+- ~~Documentation: README.md, KEY_PROMPTS.md~~ ✅ done
+- ~~Git repository + push to GitHub~~ ✅ done → https://github.com/PiyushSingh35/spliteasy (public, branch `main`)
+- Deployment to AWS (EC2 + RDS + S3/CloudFront) — pending; user will decide approach later.
+
+### Deployment prep notes (for when we deploy)
+Before deploying, the backend needs minor production hardening:
+- Set `DEBUG=False`, real `ALLOWED_HOSTS`, and a fresh `SECRET_KEY` via env.
+- Add `whitenoise` (or serve static via S3) for Django static files; run `collectstatic`.
+- Point `CORS_ALLOWED_ORIGINS` at the deployed frontend URL.
+- Frontend: set `VITE_API_URL` to the deployed backend URL, then `npm run build`.
+- RDS PostgreSQL connection string in `DATABASE_URL` (URL-encode special chars).
 
 ---
 
