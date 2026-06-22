@@ -23,11 +23,13 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (
     Group, GroupMember, Expense, ExpenseSplit,
     Settlement, ExpenseComment, Notification,
+    Wallet, WalletTransaction,
 )
 from .serializers import (
     UserSerializer, RegisterSerializer, GroupSerializer, GroupMemberSerializer,
     ExpenseSerializer, ExpenseCreateSerializer, ExpenseCommentSerializer,
     SettlementSerializer, SettlementCreateSerializer, NotificationSerializer,
+    WalletSerializer, DepositSerializer, TransferSerializer,
 )
 from .services import build_splits, recompute_group_balances, directional_balances
 
@@ -395,3 +397,136 @@ def notification_mark_read(request, notif_id):
 @api_view(["GET"])
 def notifications_unread_count(request):
     return Response({"count": request.user.notifications.filter(is_read=False).count()})
+
+
+# ---------------------------------------------------------------------------
+# Wallet
+# ---------------------------------------------------------------------------
+def _get_or_create_wallet(user):
+    wallet, _ = Wallet.objects.get_or_create(user=user)
+    return wallet
+
+
+@api_view(["GET"])
+def wallet_detail(request):
+    """Return the current user's wallet balance + last 50 transactions."""
+    wallet = _get_or_create_wallet(request.user)
+    transactions = wallet.transactions.select_related("counterpart").all()[:50]
+    return Response({
+        "balance": str(wallet.balance),
+        "updated_at": wallet.updated_at,
+        "transactions": [
+            {
+                "id": t.id,
+                "transaction_type": t.transaction_type,
+                "amount": str(t.amount),
+                "counterpart": UserSerializer(t.counterpart).data if t.counterpart else None,
+                "note": t.note,
+                "created_at": t.created_at,
+            }
+            for t in transactions
+        ],
+    })
+
+
+@api_view(["POST"])
+def wallet_deposit(request):
+    """Mock deposit — adds money to wallet instantly."""
+    serializer = DepositSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    amount = serializer.validated_data["amount"]
+
+    with transaction.atomic():
+        wallet = _get_or_create_wallet(request.user)
+        wallet.balance += amount
+        wallet.save()
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            transaction_type=WalletTransaction.DEPOSIT,
+            amount=amount,
+            note="Wallet top-up",
+        )
+
+    return Response({"balance": str(wallet.balance)}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def wallet_transfer(request):
+    """Transfer money from current user's wallet to another user (must share a group)."""
+    serializer = TransferSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    d = serializer.validated_data
+
+    to_user = User.objects.filter(id=d["to_user_id"]).first()
+    if not to_user:
+        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+    if to_user == request.user:
+        return Response({"detail": "Cannot transfer to yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Ensure they share at least one group.
+    sender_group_ids = set(
+        GroupMember.objects.filter(user=request.user).values_list("group_id", flat=True)
+    )
+    recipient_group_ids = set(
+        GroupMember.objects.filter(user=to_user).values_list("group_id", flat=True)
+    )
+    if not sender_group_ids & recipient_group_ids:
+        return Response(
+            {"detail": "You can only transfer to users who share a group with you."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    amount = d["amount"]
+    note = d.get("note", "")
+
+    with transaction.atomic():
+        sender_wallet = _get_or_create_wallet(request.user)
+        if sender_wallet.balance < amount:
+            return Response(
+                {"detail": f"Insufficient balance. Available: ₹{sender_wallet.balance}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        recipient_wallet = _get_or_create_wallet(to_user)
+
+        sender_wallet.balance -= amount
+        sender_wallet.save()
+
+        recipient_wallet.balance += amount
+        recipient_wallet.save()
+
+        WalletTransaction.objects.create(
+            wallet=sender_wallet,
+            transaction_type=WalletTransaction.TRANSFER,
+            amount=-amount,
+            counterpart=to_user,
+            note=note,
+        )
+        WalletTransaction.objects.create(
+            wallet=recipient_wallet,
+            transaction_type=WalletTransaction.TRANSFER,
+            amount=amount,
+            counterpart=request.user,
+            note=note,
+        )
+
+        # Notify recipient.
+        Notification.objects.create(
+            user=to_user,
+            message=f"{request.user.username} sent you ₹{amount} via wallet."
+            + (f" Note: {note}" if note else ""),
+        )
+
+    return Response({"balance": str(sender_wallet.balance)}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def wallet_group_members(request):
+    """Return all users who share a group with the current user (transfer candidates)."""
+    group_ids = GroupMember.objects.filter(user=request.user).values_list("group_id", flat=True)
+    members = (
+        User.objects.filter(group_memberships__group_id__in=group_ids)
+        .exclude(id=request.user.id)
+        .distinct()
+    )
+    return Response(UserSerializer(members, many=True).data)

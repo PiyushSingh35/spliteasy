@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .models import (
     Group, GroupMember, Expense, ExpenseSplit,
     Settlement, ExpenseComment, Notification,
+    Wallet, WalletTransaction,
 )
 
 User = get_user_model()
@@ -168,6 +169,47 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ["id", "message", "is_read", "created_at"]
+
+
+# ---------------------------------------------------------------------------
+# Wallet
+# ---------------------------------------------------------------------------
+class WalletTransactionSerializer(serializers.ModelSerializer):
+    counterpart = UserSerializer(read_only=True)
+
+    class Meta:
+        model = WalletTransaction
+        fields = ["id", "transaction_type", "amount", "counterpart", "note", "created_at"]
+
+
+class WalletSerializer(serializers.ModelSerializer):
+    transactions = WalletTransactionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Wallet
+        fields = ["balance", "updated_at", "transactions"]
+
+
+class DepositSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_amount(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Amount must be positive.")
+        if value > Decimal("100000"):
+            raise serializers.ValidationError("Max single deposit is ₹1,00,000.")
+        return value
+
+
+class TransferSerializer(serializers.Serializer):
+    to_user_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate_amount(self, value):
+        if value <= Decimal("0"):
+            raise serializers.ValidationError("Amount must be positive.")
+        return value
 
 
 # ---------------------------------------------------------------------------

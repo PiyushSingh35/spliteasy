@@ -44,4 +44,10 @@ urlpatterns = [
     path("notifications/", views.notifications_list),
     path("notifications/<int:notif_id>/read/", views.notification_mark_read),
     path("notifications/unread-count/", views.notifications_unread_count),
+
+    # Wallet
+    path("wallet/", views.wallet_detail),
+    path("wallet/deposit/", views.wallet_deposit),
+    path("wallet/transfer/", views.wallet_transfer),
+    path("wallet/members/", views.wallet_group_members),
 ]

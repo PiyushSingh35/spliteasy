@@ -53,6 +53,12 @@ export default function Navbar() {
         <Link to="/dashboard" className="text-xl font-bold text-emerald-600">SplitEasy</Link>
 
         <div className="flex items-center gap-4">
+          {/* Wallet */}
+          <Link to="/wallet" className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-emerald-600 transition">
+            <span>💳</span>
+            <span className="hidden sm:inline">Wallet</span>
+          </Link>
+
           {/* Notifications */}
           <div className="relative" ref={ref}>
             <button onClick={openDropdown} className="relative p-2 rounded-full hover:bg-slate-100" title="Notifications">

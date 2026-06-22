@@ -51,3 +51,10 @@ export const listNotifications = () => api.get("/notifications/");
 export const markNotificationRead = (id) =>
   api.put(`/notifications/${id}/read/`);
 export const unreadCount = () => api.get("/notifications/unread-count/");
+
+// ---- Wallet ----
+export const getWallet = () => api.get("/wallet/");
+export const depositToWallet = (amount) => api.post("/wallet/deposit/", { amount });
+export const transferFromWallet = (to_user_id, amount, note) =>
+  api.post("/wallet/transfer/", { to_user_id, amount, note });
+export const getWalletMembers = () => api.get("/wallet/members/");

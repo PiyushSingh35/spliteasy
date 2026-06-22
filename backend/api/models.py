@@ -218,6 +218,46 @@ class Balance(models.Model):
         return f"[{self.group.name}] low={self.user_low_id} high={self.user_high_id} net={self.net_amount}"
 
 
+class Wallet(models.Model):
+    """One wallet per user. Balance in rupees, never goes negative."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wallet",
+    )
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s wallet: ₹{self.balance}"
+
+
+class WalletTransaction(models.Model):
+    DEPOSIT = "deposit"
+    TRANSFER = "transfer"
+    TYPE_CHOICES = [(DEPOSIT, "Deposit"), (TRANSFER, "Transfer")]
+
+    wallet = models.ForeignKey(
+        Wallet, on_delete=models.CASCADE, related_name="transactions"
+    )
+    transaction_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    counterpart = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="received_transfers",
+    )
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.wallet.user.username} {self.transaction_type} ₹{self.amount}"
+
+
 class Notification(models.Model):
     """In-app notification (no emails, per scope). e.g. 'Alice added a ₹500 expense'."""
     user = models.ForeignKey(
